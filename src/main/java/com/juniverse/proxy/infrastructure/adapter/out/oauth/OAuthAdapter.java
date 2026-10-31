@@ -1,0 +1,125 @@
+package com.juniverse.proxy.infrastructure.adapter.out.oauth;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.juniverse.proxy.application.dto.TokenRequest;
+import com.juniverse.proxy.application.dto.TokenResponse;
+import com.juniverse.proxy.domain.exception.ServiceException;
+import com.juniverse.proxy.domain.port.out.OAuthPort;
+import com.juniverse.proxy.infrastructure.config.OAuthProperties;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.ClientResponse;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
+
+import java.time.Duration;
+import java.util.concurrent.TimeoutException;
+
+/** Adaptador de salida: llama al servidor OAuth con WebClient, con tiempo máximo y reintentos con espera exponencial. */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class OAuthAdapter implements OAuthPort {
+
+    private final WebClient oauthWebClient;
+    private final OAuthProperties oAuthProperties;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Envía el formulario al servidor OAuth. Reintenta los fallos transitorios (timeout, red y 5xx).
+     * @param request credenciales y parámetros
+     * @return el token
+     */
+    @Override
+    public Mono<TokenResponse> requestToken(TokenRequest request) {
+
+        return oauthWebClient.post()
+                .uri(oAuthProperties.getUrl())
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(BodyInserters.fromFormData(toFormData(request)))
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::mapClientResponse)
+                .bodyToMono(TokenResponse.class)
+                .timeout(Duration.ofMillis(oAuthProperties.getTimeout()))
+                .retryWhen(buildRetrySpec())
+                .doOnSuccess(response -> log.info("OAuth response received"))
+                .doOnError(ex -> log.error("OAuth request failed — {}: {}", ex.getClass().getSimpleName(), ex.getMessage()));
+
+    }
+
+    /**
+     * Convierte una respuesta HTTP de error en {@link ServiceException}.
+     * @param response respuesta del servidor OAuth
+     */
+    private Mono<? extends Throwable> mapClientResponse(ClientResponse response) {
+        HttpStatusCode status = response.statusCode();
+        return response.bodyToMono(String.class)
+                .map(body -> extractServiceException(status, body))
+                .defaultIfEmpty(new ServiceException(status, "Error getting response from oauth service"));
+    }
+
+    /**
+     * Lee el campo {@code error} del cuerpo de la respuesta.
+     * @param status código HTTP
+     * @param body cuerpo de la respuesta
+     */
+    private ServiceException extractServiceException(HttpStatusCode status, String body) {
+        try {
+            JsonNode node = objectMapper.readTree(body);
+            String error = node.path("error").asText();
+            String message = error.isBlank() ? "Could not get response from oauth service" : error;
+            log.error("OAuth error response: {} - {}", status, message);
+            return new ServiceException(status, message);
+        } catch (Exception e) {
+            log.error("OAuth error response: {} - could not parse body", status, e);
+            return new ServiceException(status, "Could not parse body");
+        }
+    }
+
+
+    /** Convierte la petición en los parámetros del formulario. */
+    private static MultiValueMap<String, String> toFormData(TokenRequest request) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.set("client_id", request.getClientId());
+        form.set("client_secret", request.getClientSecret());
+        form.set("grant_type", request.getGrantType());
+        form.set("username", request.getUserName());
+        form.set("password", request.getPassword());
+        form.set("scope", request.getScope());
+        return form;
+    }
+
+    /** Política de reintentos: espera exponencial desde 500 ms hasta 5 s; al agotarse devuelve 503. */
+    private Retry buildRetrySpec() {
+        return Retry.backoff(oAuthProperties.getAttempts(), Duration.ofMillis(500))
+                .maxBackoff(Duration.ofSeconds(5))
+                .filter(ex -> ex instanceof TimeoutException
+                        || ex instanceof WebClientRequestException
+                        || (ex instanceof WebClientResponseException responseException
+                        && responseException.getStatusCode().is5xxServerError())
+                        // onStatus() convierte los errores HTTP en ServiceException: los 5xx son los reintentables
+                        || (ex instanceof ServiceException serviceException
+                        && serviceException.getStatusCode().is5xxServerError()))
+                .doBeforeRetry(signal -> log.warn("Retrying OAuth request, attempt: {}/{}, reason: {}",
+                        signal.totalRetries() + 1,
+                        oAuthProperties.getAttempts(),
+                        signal.failure().getMessage()))
+                .onRetryExhaustedThrow((retryBackoffSpec, retrySignal) -> {
+                    log.error("OAuth request exhausted after {} attempts", retrySignal.totalRetries());
+                    return new ServiceException(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable");
+                });
+    }
+
+
+}
