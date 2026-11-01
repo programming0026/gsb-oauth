@@ -1,7 +1,7 @@
 
 # gsb-oauth (Gradle Spring Boot OAuth)
 
-Consume el servicio OAuth de keycloak, construido con Spring Boot 3 y WebFlux.
+Consume el servicio OAuth de keycloak, construido con Spring Boot 4 y WebFlux.
 
 ## Arquitectura Hexagonal
 
@@ -43,7 +43,7 @@ src/main/java/com/juniverse/proxy/
 ## Tecnologías
 
 - Java 21
-- Spring Boot 3.5.11
+- Spring Boot 4.0.1
 - Spring WebFlux
 - Spring Boot Actuator
 - Springdoc OpenAPI (Swagger)

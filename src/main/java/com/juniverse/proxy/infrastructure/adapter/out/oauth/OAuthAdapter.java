@@ -1,7 +1,7 @@
 package com.juniverse.proxy.infrastructure.adapter.out.oauth;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.juniverse.proxy.application.dto.TokenRequest;
 import com.juniverse.proxy.application.dto.TokenResponse;
 import com.juniverse.proxy.domain.exception.ServiceException;
@@ -77,7 +77,7 @@ public class OAuthAdapter implements OAuthPort {
     private ServiceException extractServiceException(HttpStatusCode status, String body) {
         try {
             JsonNode node = objectMapper.readTree(body);
-            String error = node.path("error").asText();
+            String error = node.path("error").asString("");
             String message = error.isBlank() ? "Could not get response from oauth service" : error;
             log.error("OAuth error response: {} - {}", status, message);
             return new ServiceException(status, message);

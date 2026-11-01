@@ -1,6 +1,6 @@
 package com.juniverse.proxy.infrastructure.adapter.out.oauth;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.juniverse.proxy.application.dto.TokenRequest;
 import com.juniverse.proxy.domain.exception.ServiceException;
 import com.juniverse.proxy.infrastructure.config.OAuthProperties;
