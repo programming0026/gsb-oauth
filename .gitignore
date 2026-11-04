@@ -217,12 +217,10 @@ nbdist/
 .nb-gradle/
 
 ### Gradle ###
-gradle/
+# El wrapper (gradlew, gradlew.bat y gradle/wrapper/) sí se versiona: CI y quien clone compilan con la misma versión.
 .gradle
 **/build/
 !src/**/build/
-gradlew
-gradlew.bat
 
 # Ignore Gradle GUI config
 gradle-app.setting
@@ -241,7 +239,6 @@ gradle-app.setting
 .project
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
-.gitattributes
 ### Gradle Patch ###
 # Java heap dump
 *.hprof
