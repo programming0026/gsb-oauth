@@ -20,8 +20,8 @@ public class OpenApiConfig {
                         .version("1.0.0")
                         .description("API que consume servicios OAuth2")
                         .contact(new Contact()
-                                .name("API Support")
-                                .email("support@example.com"))
+                                .name("Java Universe")
+                                .url("https://github.com/programming0026"))
                         .license(new License()
                                 .name("Apache 2.0")
                                 .url("https://www.apache.org/licenses/LICENSE-2.0")));
